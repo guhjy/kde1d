@@ -80,7 +80,7 @@
 #' @importFrom cctools cont_conv
 #' @importFrom stats na.omit
 #' @export
-kde1d <- function(x, xmin = NaN, xmax = NaN, mult = 1, bw = NA) {
+kde1d <- function(x, xmin = NaN, xmax = NaN, mult = 1, bw = NA, bw_type = "nn") {
     x <- na.omit(x)
     # sanity checks
     check_arguments(x, mult, xmin, xmax, bw)
@@ -89,10 +89,10 @@ kde1d <- function(x, xmin = NaN, xmax = NaN, mult = 1, bw = NA) {
     x <- cctools::cont_conv(x)
 
     # bandwidth selection
-    bw <- select_bw(boundary_transform(x, xmin, xmax), bw, mult)
+    bw <- select_bw(boundary_transform(x, xmin, xmax), bw, mult, bw_type)
 
     # fit model
-    fit <- fit_kde1d_cpp(x, bw, xmin, xmax)
+    fit <- fit_kde1d_cpp(x, bw, xmin, xmax, bw_type)
 
     # add info
     fit$jitter_info <- attributes(x)
@@ -149,21 +149,19 @@ boundary_transform <- function(x, xmin, xmax) {
 
 #' select's and adjust the bandwidth
 #' @noRd
-select_bw <- function(x, bw, mult) {
+select_bw <- function(x, bw, mult, bw_type) {
     if (is.na(bw)) {
-        # plug in method
-        bw <- try(KernSmooth::dpik(x))
-        # if it fails: normal rule of thumb
-        if (inherits(bw, "try-error"))
+        # select fixed bw
+        bw <- try(KernSmooth::dpik(x))  # plug in method
+        if (inherits(bw, "try-error"))  # if it fails: normal rule of thumb
             bw <- MASS::bandwidth.nrd(x)
     }
 
-    bw <- mult * bw
-
-    # for discrete use 1 - theta as lower bound for bw
-    if (length(attr(x, "i_disc")) == 1) {
-        bw <- max(bw, 0.5 - attr(x, "theta"))
+    if (bw_type == "nn") {
+        # for nn, use fraction that corresponds most with selected bw
+        bw <- mean(sapply(x, function(y) mean(abs(y - x) < bw)))
     }
 
-    bw
+    # adjust with multiplier
+    mult * bw
 }

@@ -12,8 +12,8 @@
 #' @return `An Rcpp::List` containing the fitted density values on a grid and
 #'   additional information.
 #' @noRd
-fit_kde1d_cpp <- function(x, bw, xmin, xmax) {
-    .Call('_kde1d_fit_kde1d_cpp', PACKAGE = 'kde1d', x, bw, xmin, xmax)
+fit_kde1d_cpp <- function(x, bw, xmin, xmax, bw_type) {
+    .Call('_kde1d_fit_kde1d_cpp', PACKAGE = 'kde1d', x, bw, xmin, xmax, bw_type)
 }
 
 #' computes the pdf of a kernel density estimate by interpolation.

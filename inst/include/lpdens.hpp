@@ -11,7 +11,11 @@ class LPDens1d {
 public:
     // constructors
     LPDens1d() {}
-    LPDens1d(Eigen::VectorXd x, double bw, double xmin, double xmax);
+    LPDens1d(Eigen::VectorXd x,
+             double bw,
+             double xmin,
+             double xmax,
+             std::string bw_type);
 
     // getters
     Eigen::VectorXd get_values() const {return grid_.get_values();}
@@ -35,7 +39,12 @@ private:
     Eigen::VectorXd kern_gauss(const Eigen::VectorXd& x);
     Eigen::MatrixXd fit_kde1d(const Eigen::VectorXd& x_ev,
                               const Eigen::VectorXd& x,
-                              double bw);
+                              double bw,
+                              std::string bw_type);
+    double get_bw(const double& x_ev,
+                  const Eigen::VectorXd& x,
+                  const double& bw,
+                  const std::string& bw_type);
     Eigen::VectorXd boundary_transform(const Eigen::VectorXd& x,
                                        bool inverse = false);
     Eigen::VectorXd boundary_correct(const Eigen::VectorXd& x,
@@ -55,7 +64,8 @@ private:
 inline LPDens1d::LPDens1d(Eigen::VectorXd x,
                           double bw,
                           double xmin,
-                          double xmax) :
+                          double xmax,
+                          std::string bw_type) :
     bw_(bw),
     xmin_(xmin),
     xmax_(xmax)
@@ -68,7 +78,7 @@ inline LPDens1d::LPDens1d(Eigen::VectorXd x,
     x = boundary_transform(x);
 
     // fit model and evaluate in transformed domain
-    Eigen::MatrixXd fitted = fit_kde1d(grid_points, x, bw);
+    Eigen::MatrixXd fitted = fit_kde1d(grid_points, x, bw, bw_type);
 
     // back-transform grid to original domain
     grid_points = boundary_transform(grid_points, true);
@@ -123,13 +133,15 @@ inline Eigen::VectorXd LPDens1d::kern_gauss(const Eigen::VectorXd& x)
 //!   and the influence function in the second column.
 inline Eigen::MatrixXd LPDens1d::fit_kde1d(const Eigen::VectorXd& x_ev,
                                            const Eigen::VectorXd& x,
-                                           double bw)
+                                           double bw,
+                                           std::string bw_type)
 {
     Eigen::MatrixXd out(x_ev.size(), 2);
 
     // density estimate
-    auto fhat = [&x, &bw, this] (double xx) {
-        return this->kern_gauss((x.array() - xx) / bw).mean() / bw;
+    auto fhat = [&] (const double& xx) {
+        double bw0 = get_bw(xx, x, bw, bw_type);
+        return this->kern_gauss((x.array() - xx) / bw0).mean() / bw0;
     };
     out.col(0) = x_ev.unaryExpr(fhat);
 
@@ -139,6 +151,32 @@ inline Eigen::MatrixXd LPDens1d::fit_kde1d(const Eigen::VectorXd& x_ev,
     out.col(1) = contrib / out.col(0).array();
 
     return out;
+}
+
+inline double LPDens1d::get_bw(const double& x_ev,
+                               const Eigen::VectorXd& x,
+                               const double& bw,
+                               const std::string& bw_type)
+{
+    if (bw_type == "nn") {
+        // calculate distances from observations to evaluation point
+        Eigen::VectorXd dists = (x.array() - x_ev).abs();
+
+        // sort in ascending order
+        std::sort(
+            dists.data(),
+            dists.data() + dists.size(),
+            std::less_equal<double>()
+        );
+
+        // calculate index of neighbor such that bw * n observations are used
+        size_t k = std::lround(bw * static_cast<double>(x.size()));
+
+        // return distance to kth closest as bandwidth
+        return std::min(dists(k), 0.7);
+    } else {
+        return bw;
+    }
 }
 
 //! transformations for density estimates with bounded support.
